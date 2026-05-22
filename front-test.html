@@ -22,7 +22,7 @@
 
         <div class="toolbar">
             <span class="toolbar__label">Сортировать по:</span>
-            <button class="sort-btn" :class="{ active: sortBy === 'id' }" @click="setSortBy('id')">ID<span v-if="sortBy === 'id'" class="arrow" :class="sortDir === 'desc' ? 'arrow-desc' : ''">↑</span></button>
+            <button class="sort-btn" :class="{ active: sortBy === 'id' }" @click="setSortBy('id')">ID <span v-if="sortBy === 'id'" class="arrow" :class="sortDir === 'desc' ? 'arrow-desc' : ''">↑</span></button>
             <button class="sort-btn" :class="{ active: sortBy === 'date' }" @click="setSortBy('date')">Дате<span v-if="sortBy === 'date'" class="arrow" :class="sortDir === 'desc' ? 'arrow-desc' : ''">↑</span></button>
         </div>
 
@@ -115,5 +115,286 @@
         </div>
     </div>
     </div>
+    <script>
+      Vue.use(Vuex);
+      axios.defaults.baseURL = 'https://cwoland.github.io/Front-test';
+
+      const store = new Vuex.Store({
+        strict: true,
+
+        state: {
+          comments: [],
+          loading: false,
+          error: null,
+        },
+
+        mutations: {
+          SET_COMMENTS(state, comments) {
+            state.comments = comments;
+          },
+          SET_LOADING(state, val) {
+            state.loading = val;
+          },
+          SET_ERROR(state, msg) {
+            state.error = msg;
+          },
+          ADD_COMMENT(state, comment) {
+            state.comments.push(comment);
+          },
+          DELETE_COMMENT(state, id) {
+            state.comments = state.comments.filter(c => c.id !== id);
+          },
+          UPDATE_COMMENT(state, updated) {
+            const idx = state.comments.findIndex(c => c.id === updated.id);
+            if (idx !== -1) Vue.set(state.comments, idx, updated);
+          },
+        },
+
+        actions: {
+          async fetchComments({ commit }) {
+            commit('SET_LOADING', true);
+            commit('SET_ERROR', null);
+            try {
+              const { data } = await axios.get('/api/comments/');
+              commit('SET_COMMENTS', Array.isArray(data) ? data : []);
+            } catch (e) {
+              commit('SET_ERROR', 'Не удалось загрузить комментарии. Проверьте соединение или обновите страницу.');
+              console.error('[store] fetchComments:', e);
+            } finally {
+              commit('SET_LOADING', false);
+            }
+          },
+
+          async createComment({ commit }, payload) {
+            const { data } = await axios.post('/api/comments/', payload);
+            commit('ADD_COMMENT', data);
+            return data;
+          },
+
+          async deleteComment({ commit }, id) {
+            await axios.delete('/api/comments/${id}');
+            commit('DELETE_COMMENT', id);
+          },
+
+          async updateComment({ commit }, { id, payload }) {
+            const { data } = await axios.patch('/api/comments/${id}', payload);
+            commit('UPDATE_COMMENT', data);
+            return data;
+          },
+        },
+      });
+
+      const ru = {
+        language: 'Russian',
+        months: [
+          'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+        ],
+        monthsAbbr: [
+          'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сент', 'Окт', 'Ноя', 'Дек',
+        ],
+        days: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
+        rtl: false,
+        ymd: false,
+        yearSuffix: '',
+      };
+
+      new Vue({
+        el: '#app',
+        store,
+
+        components: {
+          Datepicker: vuejsDatepicker,
+        },
+
+        data() {
+          return {
+            currentPage: 1,
+            perPage: 3,
+
+            sortBy: 'id',
+            sortDir: 'asc',
+
+            newComment: { name: '', text: '', dateObj: null },
+            submitting: false,
+            formError: '',
+            formSuccess: false,
+
+            editingId: null,
+            editData: { name: '', text: '', dateObj: null },
+            savingEdit: false,
+
+            deletingId: null,
+
+            ru,
+          };
+        },
+
+        computed: {
+          allComments() { return this.$store.state.comments || []; },
+          loading() { return this.$store.state.loading; },
+          storeError() { return this.$store.state.error; },
+
+          sortedComments() {
+            return [...(this.allComments || [])].sort((a, b) => {
+              let av, bv;
+              if (this.sortBy === 'id') {
+                av = Number(a.id);
+                bv = Number(b.id);
+              } else {
+                const pa = Date.parse(a.date);
+                const pb = Date.parse(b.date);
+                av = isNaN(pa) ? a.date : pa;
+                bv = isNaN(b.id) ? b.date : pb;
+              }
+              if (av < bv) return this.sortDir === 'asc' ? -1 : 1;
+              if (av > bv) return this.sortDir === 'asc' ? 1 : -1;
+              return 0;
+            });
+          },
+
+          totalPages() {
+            return Math.max(1, Math.ceil(this.sortedComments.length / this.perPage));
+          },
+
+          paginatedComments() {
+            const start = (this.currentPage - 1) * this.perPage;
+            return this.sortedComments.slice(start, start + this.perPage);
+          },
+        },
+
+        watch: {
+          sortBy() { this.currentPage = 1; },
+          sortDir() { this.currentPage = 1; },
+
+          totalPages(val) {
+            if (this.currentPage > val) this.currentPage = val;
+          },
+        },
+
+        methods: {
+          fetchComments() {
+            this.$store.dispatch('fetchComments');
+          },
+
+          setSortBy(field) {
+            if (this.sortBy === field) {
+              this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+              this.sortBy = field;
+              this.sortDir = 'asc';
+            }
+          },
+
+          setPage(page) {
+            if (page < 1 || page > this.totalPages) return;
+            this.currentPage = page;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          },
+
+          formatDate(dateObj) {
+            if (!dateObj) return '';
+            const d = new Date(dateObj);
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dd}.${mm}.${yyyy}`;
+          },
+
+          async submitComment() {
+            this.formError = '';
+
+            if (!this.newComment.name.trim()) {
+              this.formError = 'Введите имя пользователя';
+              return;
+            }
+            if (!this.newComment.text.trim()) {
+              this.formError = 'Введите текст комментария';
+              return;
+            }
+            if (!this.newComment.dateObj) {
+              this.formError = 'Выберите дату';
+              return;
+            }
+
+            this.submitting = true;
+            try {
+              await this.$store.dispatch('createComment', {
+                name: this.newComment.name.trim(),
+                text: this.newComment.text.trim(),
+                date: this.formatDate(this.newComment.dateObj),
+              });
+
+              this.newComment = { name: '', text: '', dateObj: null };
+              this.formSuccess = true;
+              setTimeout(() => { this.formSuccess = false; }, 3000);
+
+              this.$nextTick(() => {
+                this.currentPage = this.totalPages;
+              });
+            } catch (e) {
+              this.formError = 'Ошибка при добавлении комментария. Попробуйте снова.';
+              console.error('[app] createComment:', e);
+            } finally {
+              this.submitting = false;
+            }
+          },
+
+          async removeComment(id) {
+            if (!confirm('Удалить комментарий?')) return;
+            this.deletingId = id;
+            try {
+              await this.$store.dispatch('deleteComment', id);
+            } catch (e) {
+              alert('Ошибка при удалении. Попробуйте снова');
+              console.error('[app] deleteComment:', e);
+            } finally {
+              this.deletingId = null;
+            }
+          },
+
+          startEdit(comment) {
+            this.editingId = comment.id;
+            this.editData = {
+              name: comment.name,
+              text: comment.text,
+              dateObj: comment.date ? new Date(comment.date.split('.').reverse().join('-')) : null,
+            };
+          },
+
+          cancelEdit() {
+            this.editingId = null;
+            this.editData = { name: '', text: '', dateObj: null };
+          },
+
+          async saveEdit(id) {
+            if (!this.editData.name.trim() || !this.editData.text.trim()) {
+              alert('Введите имя и текст');
+              return;
+            }
+            this.savingEdit = true;
+            try {
+              await this.$store.dispatch('updateComment', {
+                id, 
+                payload: {
+                  name: this.editData.name.trim(),
+                  text: this.editData.text.trim(),
+                  date: this.editData.dateObj ? this.formatDate(this.editData.dateObj) : '',
+                },
+              });
+              this.cancelEdit();
+            } catch (e) {
+              alert('Ошибка при сохранении');
+              console.error('[app] updateComment:', e);
+            } finally {
+              this.savingEdit = false;
+            }
+          },
+        },
+
+        created() {
+          this.fetchComments();
+        },
+      });
+    </script>
 </body>
 </html>
