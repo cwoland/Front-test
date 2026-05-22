@@ -19,11 +19,101 @@
             <h1 class="site-header__title">Комментарии <em>&amp; Отзывы</em></em></h1>
             <div class="site-header__line"></div>
         </header>
+
         <div class="toolbar">
             <span class="toolbar__label">Сортировать по:</span>
             <button class="sort-btn" :class="{ active: sortBy === 'id' }" @click="setSortBy('id')">ID<span v-if="sortBy === 'id'" class="arrow" :class="sortDir === 'desc' ? 'arrow-desc' : ''">↑</span></button>
             <button class="sort-btn" :class="{ active: sortBy === 'date' }" @click="setSortBy('date')">Дате<span v-if="sortBy === 'date'" class="arrow" :class="sortDir === 'desc' ? 'arrow-desc' : ''">↑</span></button>
         </div>
+
+        <div class="stats-bar" v-if="loading">
+          <span class="stats-bar__item">Комментарии: <strong>{{ allComments.length }}</strong></span>
+          <span class="stats-bar__item">Страница: <strong>{{ currentPage }} / {{ totalPages | 1 }}</strong></span>
+        </div>
+
+        <p class="section-label">Комментарии</p>
+        <div v-if="loading" class="state-box">
+
+          <div class="spinner"></div>
+          <p class="state-box__text">Загрузка...</p>
+        </div>
+
+        <div v-else-if="storeError" class="state-box">
+          <span class="state-box__icon">⚠️</span>
+          <p class="state-box__text">{{ storeError }}</p>
+          <button class="btn btn--ghost" style="margin-top:14px" @click="fetchComments">Попробовать ещё раз</button>
+        </div>
+
+        <div v-else class="comment-list">
+          <div v-for="coment in paginatedComments" :key="comment.id" class="glass comment-card">
+            <template v-if="editingId !== comment.id">
+              <div class="comment-card__header">
+                <div class="comment-card__meta">
+                  <span class="comment-card__name">{{ comment.name }}</span>
+                  <span class="comment-card__info">{{ comment.date }}</span>
+                </div>
+                <span class="comment-card__id"># {{ comment.id }}</span>
+              </div>
+              <p class="coment-card__text">{{ comment.text }}</p>
+
+              <div class="coment-card__actions">
+                <button class="btn btn--ghost btn--sm" @click="startEdit(comment)">Изменить</button>
+                <button class="btn btn--danger btn--sm" @click="removeComment(comment.id)" :disabled="deletingId === comment.id">{{ deletingId === comment.id ? 'Удаляется...' : 'Удалить'}}</button>
+              </div>
+            </template>
+
+            <template v-else>
+              <p class="section-label" style="margin-bottom:14px">Редактирование # {{ comment.id }}</p>
+
+              <div class="edit-area">
+                <input class="form-input" v-model="editData.name" placeholder="Имя" maxlength="100" />
+                <textarea class="form-textarea" v-model="editData.text" placeholder="Напишите ваш комментарий" rows="3"></textarea>
+                <datepicker v-model="editData.dateObj" :language="ru" :monday-first="true" placeholder="Выберите дату" format="dd.MM.yyyy"></datepicker>
+              </div>
+
+              <div class="comment-card__actions">
+                <button class="btn btn--primary btn--sm" @click="saveEdit(comment.id)" :disabled="savingEdit">{{ savingEdit ? 'Сохранение' : 'Сохранить' }}</button>
+                <button class="btn btn--ghost btn--sm" @click="cancelEdit">Отмена</button>
+              </div>
+            </template>
+
+          </div>
+        </div>
+
+        <div v-if="totalPages > 1" class="pagination">
+          <button class="page-btn" :disabled="currentPage === 1" @click="setPage(currentPage - 1)" title="Предыдущая">‹</button>
+          <buton v-for="page in pages" :key="page" class="page-btn" :class="{ active: page === currentPage }" @click="setPage(page)">{{ page }}</buton>
+          <button class="page-btn" :disabled="currentPage === totalPages" @click="setPage(currentPage + 1)" title="Следующая">›</button>
+        </div>
+
+        <p v-if="totalPages > 0" class="page-info">Страница {{ currentPage }} из {{ totalPages }}</p>
+        <div class="divider"></div>
+        <p class="section-label">Добавить комментарий</p>
+        <div class="glass form-card">
+          <div v-if="formError" class="form-error">{{ formError }}</div>
+          <div v-if="formSuccess" class="form-success">✓ Комментарий добавлен!</div>
+
+          <div class="form-grid">
+
+            <div class="form-group">
+              <label class="form-label">Имя пользователя</label>
+              <input class="form-input" v-model="newComment.name" placeholder="Ваше имя" maxlength="100" @keydown.enter="submitComment" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Дата</label>
+              <datepicker v-model="newComment.dateObj" :language="ru" :monday-first="true" placeholder="Выберите дату..." format="dd.MM.yyyy"></datepicker>
+          </div>
+
+          <div class="form-group form-group--full">
+            <label class="form-label">Комментарий</label>
+            <textarea class="form-textarea" v-model="newComment.text" placeholder="Введите ваш комментарий" maxlength="1000"></textarea>
+          </div>
+        </div>
+        <div class="form-footer">
+          <button class="btn btn--primary" @click="submitComment" :disabled="submitting">{{ submitting ? 'Отправка...' : 'Добавить комментарий' }}</button>
+        </div>
+    </div>
     </div>
 </body>
 </html>
